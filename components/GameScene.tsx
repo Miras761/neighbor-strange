@@ -1,4 +1,4 @@
-import React, { Suspense, useRef } from 'react';
+import React, { Suspense, useRef, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Physics } from '@react-three/cannon';
 import { Sky, Stars, KeyboardControls, PointerLockControls } from '@react-three/drei';
@@ -11,10 +11,15 @@ import { Vector3 } from 'three';
 
 export const GameScene = () => {
   const isPlaying = useGameStore((state) => state.isPlaying);
+  const isChatting = useGameStore((state) => state.isChatting);
   const stopGame = useGameStore((state) => state.stopGame);
   
   // Shared reference for player position to avoid store updates every frame
   const playerPos = useRef(new Vector3(0,0,0));
+
+  // Ref to track chat state inside callback
+  const isChattingRef = useRef(isChatting);
+  useEffect(() => { isChattingRef.current = isChatting; }, [isChatting]);
 
   return (
     <KeyboardControls
@@ -26,7 +31,13 @@ export const GameScene = () => {
         { name: 'jump', keys: ['Space'] },
       ]}
     >
-      <Canvas shadows camera={{ fov: 60 }}>
+      <Canvas shadows camera={{ fov: 60 }} onClick={() => {
+        // Allow clicking to reclaim pointer lock if playing but not chatting
+        if(isPlaying && !isChatting) {
+          const canvas = document.querySelector('canvas');
+          canvas?.requestPointerLock();
+        }
+      }}>
         <Sky sunPosition={[100, 20, 100]} turbidity={0.5} rayleigh={0.5} mieCoefficient={0.005} mieDirectionalG={0.8} />
         <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
         <ambientLight intensity={0.5} />
@@ -42,12 +53,15 @@ export const GameScene = () => {
           </Physics>
         </Suspense>
 
-        {isPlaying && (
+        {isPlaying && !isChatting && (
           <PointerLockControls 
             selector="#root"
             onUnlock={() => {
-                // When user presses Escape, we stop the game to show menu
-                stopGame();
+                // Only stop game if we unlocked NOT because of chat
+                // We use a small timeout to allow state to settle or check ref
+                if (!isChattingRef.current) {
+                  stopGame();
+                }
             }} 
           />
         )}

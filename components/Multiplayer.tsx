@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Vector3 } from 'three';
 import { Text } from '@react-three/drei';
@@ -7,13 +7,14 @@ import { useGameStore, ChatMessage } from '../store';
 // --- TYPES ---
 type PlayerState = {
   id: string;
+  name: string;
   position: [number, number, number];
   rotation: number; // Y rotation
   color: string;
   lastUpdate: number;
 };
 
-// --- FAKE BOTS (For ambiance) ---
+// --- FAKE BOTS ---
 const BOT_PROFILES = [
   { name: "xX_Slayer_Xx", color: "#60a5fa" },
   { name: "NoobMaster69", color: "#c084fc" },
@@ -63,7 +64,9 @@ const FakeBot = ({ name, color, startPos }: { name: string, color: string, start
          <boxGeometry args={[0.3, 0.3, 0.3]} />
          <meshStandardMaterial color={color} />
       </mesh>
-      <Text position={[0, 1.2, 0]} fontSize={0.25} color="white" outlineWidth={0.02} outlineColor="black">{name} [BOT]</Text>
+      <Text position={[0, 1.4, 0]} fontSize={0.3} color="white" outlineWidth={0.02} outlineColor="black">
+        {name} [BOT]
+      </Text>
     </group>
   );
 };
@@ -71,17 +74,28 @@ const FakeBot = ({ name, color, startPos }: { name: string, color: string, start
 // --- REAL REMOTE PLAYER ---
 const RemotePlayer = ({ data }: { data: PlayerState }) => {
     const ref = useRef<any>(null);
+    // Use refs to store the latest data to avoid stale closures in useFrame
+    const dataRef = useRef(data);
+
+    useLayoutEffect(() => {
+        dataRef.current = data;
+    }, [data]);
     
-    useFrame(() => {
+    useFrame((state, delta) => {
         if(ref.current) {
-            // Simple interpolation could go here, but direct set is fine for local tabs
-            ref.current.position.set(...data.position);
-            ref.current.rotation.set(0, data.rotation, 0);
+            // Lerp to the latest known position from the ref
+            const targetPos = new Vector3(...dataRef.current.position);
+            ref.current.position.lerp(targetPos, 10 * delta);
+            
+            // Simple rotation interpolation
+            // ref.current.rotation.y = dataRef.current.rotation; 
+            // Better: Smooth rotation? Just set for now to avoid spinning
+            ref.current.rotation.set(0, dataRef.current.rotation, 0);
         }
     });
 
     return (
-        <group ref={ref}>
+        <group ref={ref} position={data.position}>
             <mesh castShadow position={[0,0,0]}>
                 <capsuleGeometry args={[0.4, 1, 4, 8]} />
                 <meshStandardMaterial color={data.color} />
@@ -94,8 +108,8 @@ const RemotePlayer = ({ data }: { data: PlayerState }) => {
                 <boxGeometry args={[0.35, 0.35, 0.35]} />
                 <meshStandardMaterial color={data.color} />
             </mesh>
-            <Text position={[0, 1.3, 0]} fontSize={0.3} color="white" outlineWidth={0.02} outlineColor="black">
-                P-{data.id.substring(0,3)}
+            <Text position={[0, 1.4, 0]} fontSize={0.4} color="white" outlineWidth={0.04} outlineColor="black">
+                {data.name}
             </Text>
         </group>
     )
@@ -103,9 +117,10 @@ const RemotePlayer = ({ data }: { data: PlayerState }) => {
 
 // --- MANAGER ---
 export const MultiplayerManager = ({ playerPosRef }: { playerPosRef: React.MutableRefObject<Vector3> }) => {
-  const { isPlaying, playerId, playerColor, lastOutgoingMessage, receiveChatMessage } = useGameStore();
+  const { isPlaying, playerId, playerName, playerColor, lastOutgoingMessage, receiveChatMessage, setConnectedCount } = useGameStore();
   const [remotePlayers, setRemotePlayers] = useState<Record<string, PlayerState>>({});
   const channelRef = useRef<BroadcastChannel | null>(null);
+  const lastBroadcastTime = useRef(0);
 
   // Initialize BroadcastChannel
   useEffect(() => {
@@ -134,20 +149,33 @@ export const MultiplayerManager = ({ playerPosRef }: { playerPosRef: React.Mutab
       };
   }, [playerId, receiveChatMessage]);
 
-  // Broadcast Loop (Position)
+  // Update connected count for UI
+  useEffect(() => {
+      setConnectedCount(Object.keys(remotePlayers).length);
+  }, [remotePlayers, setConnectedCount]);
+
+  // Broadcast Loop (Position) - Throttled
   useFrame((state) => {
-      if (!isPlaying || !channelRef.current || !playerPosRef.current) return;
-      
-      // Throttle broadcast slightly to save resources, but every frame is fine for local tabs
-      channelRef.current.postMessage({
-          type: 'PLAYER_UPDATE',
-          payload: {
-              id: playerId,
-              position: playerPosRef.current.toArray(),
-              rotation: state.camera.rotation.y, // Rough heading
-              color: playerColor
-          }
-      });
+      if (!channelRef.current) return;
+      // We broadcast even if not playing (e.g. in lobby)? No, only when playing usually.
+      // But for visibility during "lobby" or if we want to support it later, we could.
+      // For now, only broadcast if playing to avoid spamming when on start screen.
+      if (!isPlaying || !playerPosRef.current) return;
+
+      const now = Date.now();
+      if (now - lastBroadcastTime.current > 50) { // 20hz
+        lastBroadcastTime.current = now;
+        channelRef.current.postMessage({
+            type: 'PLAYER_UPDATE',
+            payload: {
+                id: playerId,
+                name: playerName, // Send name
+                position: playerPosRef.current.toArray(),
+                rotation: state.camera.rotation.y, 
+                color: playerColor
+            }
+        });
+      }
   });
 
   // Cleanup stale players

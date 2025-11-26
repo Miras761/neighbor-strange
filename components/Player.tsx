@@ -3,6 +3,7 @@ import { useThree, useFrame } from '@react-three/fiber';
 import { useSphere } from '@react-three/cannon';
 import { Vector3 } from 'three';
 import { useKeyboardControls } from '@react-three/drei';
+import { useGameStore } from '../store';
 
 const WALK_SPEED = 5;
 const RUN_SPEED = 9;
@@ -10,6 +11,8 @@ const JUMP_FORCE = 5;
 
 export const Player = ({ playerPosRef }: { playerPosRef: React.MutableRefObject<Vector3> }) => {
   const { camera } = useThree();
+  const isChatting = useGameStore((state) => state.isChatting);
+  
   const [ref, api] = useSphere(() => ({ 
     mass: 1, 
     type: 'Dynamic', 
@@ -45,6 +48,12 @@ export const Player = ({ playerPosRef }: { playerPosRef: React.MutableRefObject<
   }, []);
   
   useFrame(() => {
+    // Disable movement controls if chatting
+    if (isChatting) {
+        api.velocity.set(0, velocity.current[1], 0);
+        return;
+    }
+
     const { forward, backward, left, right, jump } = get();
     
     // Sync camera to physics body
