@@ -9,6 +9,25 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
+// Fix: Add missing React Three Fiber intrinsic elements to global JSX namespace
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      ambientLight: any;
+      pointLight: any;
+      group: any;
+      mesh: any;
+      primitive: any;
+      boxGeometry: any;
+      planeGeometry: any;
+      capsuleGeometry: any;
+      sphereGeometry: any;
+      meshStandardMaterial: any;
+      [elemName: string]: any;
+    }
+  }
+}
+
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
