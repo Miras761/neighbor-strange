@@ -9,9 +9,15 @@ export interface ChatMessage {
 
 interface GameState {
   playerId: string;
-  playerName: string; // User defined name
+  playerName: string; 
   playerColor: string;
-  connectedCount: number; // Number of other players found
+  connectedCount: number; 
+  
+  // Multiplayer Setup State
+  isMultiplayer: boolean;
+  isHost: boolean;
+  roomId: string | null; // The ID of the host (self if host, target if joiner)
+  
   isPlaying: boolean;
   isCaught: boolean;
   isWon: boolean;
@@ -23,6 +29,9 @@ interface GameState {
   
   setPlayerName: (name: string) => void;
   setConnectedCount: (count: number) => void;
+  setRoomId: (id: string) => void;
+  setHostMode: (isHost: boolean) => void;
+  
   startGame: () => void;
   stopGame: () => void;
   setChatting: (isChatting: boolean) => void;
@@ -35,7 +44,7 @@ interface GameState {
   receiveChatMessage: (msg: ChatMessage) => void;
 }
 
-// Generate a random ID and Color for this session (Tab)
+// Generate a random ID and Color for this session
 const SESSION_ID = Math.random().toString(36).substring(7);
 const SESSION_COLOR = `hsl(${Math.random() * 360}, 70%, 50%)`;
 
@@ -44,6 +53,11 @@ export const useGameStore = create<GameState>((set) => ({
   playerName: `Player ${SESSION_ID.substring(0,3)}`,
   playerColor: SESSION_COLOR,
   connectedCount: 0,
+  
+  isMultiplayer: false,
+  isHost: false,
+  roomId: null,
+
   isPlaying: false,
   isCaught: false,
   isWon: false,
@@ -55,6 +69,8 @@ export const useGameStore = create<GameState>((set) => ({
 
   setPlayerName: (name) => set({ playerName: name }),
   setConnectedCount: (count) => set({ connectedCount: count }),
+  setRoomId: (id) => set({ roomId: id }),
+  setHostMode: (isHost) => set({ isHost }),
 
   startGame: () => set((state) => ({ 
     isPlaying: true, 
@@ -62,8 +78,9 @@ export const useGameStore = create<GameState>((set) => ({
     isWon: false, 
     hasKey: false,
     isChatting: false,
+    isMultiplayer: !!state.roomId, // If we have a room ID/Host setup, it's MP
     gameMessage: "Find the Golden Spatula!",
-    chatMessages: [{ id: 'sys_start', sender: 'System', text: `Welcome ${state.playerName}! Open another tab to play with yourself.`, color: '#fbbf24' }]
+    chatMessages: [{ id: 'sys_start', sender: 'System', text: `Welcome ${state.playerName}!`, color: '#fbbf24' }]
   })),
   
   stopGame: () => set({ isPlaying: false, isChatting: false }),

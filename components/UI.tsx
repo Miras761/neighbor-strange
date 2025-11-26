@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '../store';
-import { Key, Skull, Trophy, Users, Send, MessageSquare, User } from 'lucide-react';
+import { Key, Skull, Trophy, Users, Send, MessageSquare, User, Globe, Copy } from 'lucide-react';
 
 const ChatBox = () => {
   const { chatMessages, sendChatMessage, isChatting, setChatting } = useGameStore();
@@ -67,7 +67,21 @@ const ChatBox = () => {
 };
 
 export const UI = () => {
-  const { isPlaying, isCaught, isWon, hasKey, gameMessage, startGame, reset, isChatting, setChatting, playerName, setPlayerName, connectedCount } = useGameStore();
+  const { isPlaying, isCaught, isWon, hasKey, gameMessage, startGame, reset, isChatting, setChatting, playerName, setPlayerName, isHost, setHostMode, roomId, setRoomId } = useGameStore();
+  const [activeTab, setActiveTab] = useState<'host' | 'join'>('host');
+  const [copyFeedback, setCopyFeedback] = useState("");
+
+  // Update store when tab changes
+  useEffect(() => {
+      setHostMode(activeTab === 'host');
+      if (activeTab === 'host') {
+          // Reset room ID so PeerJS can generate one, or we can pre-generate a random one to request
+          // Ideally MultiplayerManager handles generation if ID is null/empty in host mode
+          setRoomId(""); 
+      } else {
+          setRoomId("");
+      }
+  }, [activeTab, setHostMode, setRoomId]);
 
   useEffect(() => {
       const handleKeyDown = (e: KeyboardEvent) => {
@@ -79,33 +93,27 @@ export const UI = () => {
       return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isPlaying, isChatting, setChatting]);
 
+  const handleStart = () => {
+      if (activeTab === 'join' && !roomId) {
+          alert("Please enter a Room ID to join!");
+          return;
+      }
+      startGame();
+  };
+
   if (!isPlaying && !isCaught && !isWon) {
     return (
       <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 text-white p-4">
-        <h1 className="text-6xl font-black text-yellow-400 mb-4 tracking-tighter transform -rotate-2">
+        <h1 className="text-6xl font-black text-yellow-400 mb-2 tracking-tighter transform -rotate-2">
           HELLO STRANGER
         </h1>
-        <p className="text-xl mb-4 text-gray-300">Parody Edition</p>
+        <p className="text-xl mb-6 text-gray-300">Multiplayer Parody Edition</p>
         
-        {/* Connection Status */}
-        <div className="flex flex-col items-center gap-2 mb-6 bg-green-900/50 px-6 py-2 rounded-full border border-green-500/50">
-           <div className="flex items-center gap-2">
-              <Users size={16} className={connectedCount > 0 ? "text-green-400 animate-pulse" : "text-gray-400"} />
-              <span className="text-sm font-mono text-green-300 font-bold">
-                  {connectedCount > 0 ? `${connectedCount} Friends Online` : "Searching for players..."}
-              </span>
-           </div>
-           <span className="text-xs text-green-400/80">
-               {connectedCount > 0 ? "Join them now!" : "Open a second tab to see multiplayer!"}
-           </span>
-        </div>
-        
-        <div className="bg-gray-800 p-6 rounded-lg max-w-md text-center border-4 border-yellow-400 w-full">
-          <p className="mb-4 text-gray-300">Mr. Peterson has the Golden Spatula. Go get it.</p>
-          
-          <div className="mb-6 text-left">
-            <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Your Name</label>
-            <div className="flex items-center bg-gray-900 rounded border border-gray-600 focus-within:border-yellow-400 transition-colors p-2">
+        <div className="bg-gray-800 p-6 rounded-lg max-w-md w-full border-4 border-yellow-400 shadow-2xl">
+          {/* Name Input */}
+          <div className="mb-6">
+            <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Your Nickname</label>
+            <div className="flex items-center bg-gray-900 rounded border border-gray-600 p-2">
                 <User size={18} className="text-gray-400 mr-2"/>
                 <input 
                     type="text" 
@@ -118,22 +126,80 @@ export const UI = () => {
             </div>
           </div>
 
-          <ul className="text-left space-y-2 mb-6 text-sm text-gray-300">
-            <li>🕵️ <b>WASD</b> to Move</li>
-            <li>🏃 <b>Shift</b> to Sprint</li>
-            <li>✨ <b>Space</b> to Jump</li>
-            <li>💬 <b>Enter</b> to Chat</li>
-          </ul>
+          {/* Multiplayer Tabs */}
+          <div className="flex mb-4 border-b border-gray-600">
+              <button 
+                onClick={() => setActiveTab('host')}
+                className={`flex-1 py-2 text-sm font-bold transition-colors ${activeTab === 'host' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-400 hover:text-white'}`}
+              >
+                  HOST GAME
+              </button>
+              <button 
+                onClick={() => setActiveTab('join')}
+                className={`flex-1 py-2 text-sm font-bold transition-colors ${activeTab === 'join' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-400 hover:text-white'}`}
+              >
+                  JOIN GAME
+              </button>
+          </div>
+
+          <div className="mb-6 h-24">
+              {activeTab === 'host' ? (
+                  <div className="text-sm text-gray-300 bg-gray-900/50 p-3 rounded border border-gray-700 h-full flex flex-col justify-center items-center text-center">
+                      <Globe size={24} className="mb-2 text-blue-400" />
+                      <p>You will be the Host.</p>
+                      <p className="text-xs text-gray-500">Click START to generate a Room ID.</p>
+                  </div>
+              ) : (
+                   <div className="flex flex-col h-full justify-center">
+                       <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Enter Room ID</label>
+                       <input 
+                           type="text" 
+                           value={roomId || ''}
+                           onChange={(e) => setRoomId(e.target.value)}
+                           className="bg-gray-900 border border-gray-600 rounded p-2 text-white font-mono text-center tracking-widest focus:border-yellow-400 outline-none transition-colors"
+                           placeholder="Paste ID here..."
+                       />
+                       <p className="text-xs text-gray-500 mt-1 text-center">Ask your friend for their Room ID.</p>
+                   </div>
+              )}
+          </div>
+
           <button 
-            onClick={startGame}
-            className="w-full bg-yellow-400 hover:bg-yellow-500 text-black font-bold py-3 px-6 rounded text-xl transition-transform hover:scale-105 shadow-[0_4px_0_rgb(180,83,9)] hover:shadow-[0_2px_0_rgb(180,83,9)] hover:translate-y-[2px]"
+            onClick={handleStart}
+            className="w-full bg-yellow-400 hover:bg-yellow-500 text-black font-bold py-3 px-6 rounded text-xl transition-transform hover:scale-105 shadow-[0_4px_0_rgb(180,83,9)] active:translate-y-[2px] active:shadow-[0_2px_0_rgb(180,83,9)]"
           >
-            ENTER WORLD
+            {activeTab === 'host' ? 'START & CREATE ROOM' : 'JOIN ROOM'}
           </button>
         </div>
       </div>
     );
   }
+
+  // In-Game Connection Info Overlay
+  const ConnectionInfo = () => {
+      if (!isHost || !isPlaying) return null;
+      
+      const copyId = () => {
+          if (roomId) {
+              navigator.clipboard.writeText(roomId);
+              setCopyFeedback("Copied!");
+              setTimeout(() => setCopyFeedback(""), 2000);
+          }
+      };
+
+      return (
+        <div className="absolute top-20 left-4 bg-black/60 p-3 rounded-lg backdrop-blur text-white max-w-xs pointer-events-auto border border-yellow-400/30">
+            <p className="text-xs text-gray-400 font-bold mb-1 uppercase">Room ID (Share this):</p>
+            <div className="flex items-center gap-2 bg-black/40 p-1 rounded border border-white/10">
+                <span className="font-mono text-sm text-yellow-400 truncate select-all">{roomId || "Generating..."}</span>
+                <button onClick={copyId} className="p-1 hover:text-white text-gray-400 transition-colors" title="Copy ID">
+                    <Copy size={14} />
+                </button>
+            </div>
+            {copyFeedback && <p className="text-green-400 text-xs mt-1 font-bold">{copyFeedback}</p>}
+        </div>
+      );
+  };
 
   if (isCaught) {
     return (
@@ -184,6 +250,8 @@ export const UI = () => {
              </div>
          )}
       </div>
+
+      <ConnectionInfo />
 
       <div className="absolute bottom-4 right-4 flex gap-2">
          {hasKey && (
